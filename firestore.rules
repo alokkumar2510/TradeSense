@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Users ───────────────────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ─── Portfolio ────────────────────────────────────────────────────────────
+    // Holdings sub-collection
+    match /portfolio/{uid}/holdings/{symbol} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    // Transactions sub-collection
+    match /portfolio/{uid}/transactions/{txnId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ─── Watchlist ────────────────────────────────────────────────────────────
+    match /watchlist/{uid}/stocks/{symbol} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ─── Deny all other reads/writes ─────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

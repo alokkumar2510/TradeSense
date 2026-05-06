@@ -1,0 +1,36 @@
+.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+.header h1 { margin-bottom: 0.25rem; letter-spacing: -0.03em; }
+.header p  { color: var(--text-secondary); }
+
+.empty {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 1rem; padding: 5rem 2rem;
+}
+.empty h3 { font-size: 1.25rem; }
+.empty p  { color: var(--text-secondary); max-width: 360px; }
+
+.list { display: flex; flex-direction: column; gap: 0.625rem; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: rgba(17, 24, 39, 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  transition: border-color var(--transition-fast), transform var(--transition-fast), background var(--transition-fast);
+}
+.row:hover {
+  border-color: var(--border-default);
+  background: rgba(255,255,255,0.03);
+  transform: translateY(-1px);
+}
+
+.symbol { display: flex; align-items: center; gap: 0.625rem; flex: 1; }
+.symbol strong { font-size: 0.9375rem; }
+
+.price { display: flex; align-items: center; gap: 0.625rem; margin-left: auto; }
+.price .mono { font-size: 0.9375rem; font-weight: 600; }
+
+.change { display: flex; align-items: center; gap: 0.2rem; font-size: 0.8125rem; font-weight: 600; }

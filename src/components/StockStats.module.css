@@ -1,0 +1,4 @@
+.grid { margin-top: 1.25rem; }
+.stat { padding: 1rem 1.25rem; }
+.label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; display: block; margin-bottom: 0.375rem; font-weight: 600; }
+.value { font-size: 1.0625rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); }

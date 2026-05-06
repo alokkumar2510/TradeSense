@@ -1,0 +1,22 @@
+name = "tradesense-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# ─── KV Namespaces (create these in CF dashboard, then paste IDs) ─────────────
+[[kv_namespaces]]
+binding = "CACHE"
+id = "cd83906fdd964ab0a2705fa8c43c2c19"
+preview_id = "66ea914a067942be870a14c74d4100db"
+
+# ─── Environment Variables (secrets set via: wrangler secret put KEY) ─────────
+# Do NOT put real keys here — use `wrangler secret put FMP_API_KEY` etc.
+[vars]
+ENVIRONMENT = "production"
+
+# ─── Routes ──────────────────────────────────────────────────────────────────
+# Uncomment when deploying to production:
+[[routes]]
+pattern = "tradesense.alokkumarsahu.in/api/*"
+zone_name = "alokkumarsahu.in"

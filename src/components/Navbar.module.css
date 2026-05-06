@@ -1,0 +1,172 @@
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(6, 10, 16, 0.82);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+/* ─── Logo ─────────────────────────────────────────────────────────────────── */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
+}
+.logo strong {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 800;
+}
+
+/* ─── Desktop nav links ─────────────────────────────────────────────────────── */
+.links {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.link:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-primary);
+}
+.active {
+  background: rgba(59,130,246,0.08);
+  color: var(--text-primary);
+}
+.active svg { color: var(--accent-blue); }
+
+/* ─── User row ──────────────────────────────────────────────────────────────── */
+.user {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(59,130,246,0.3);
+  box-shadow: 0 0 12px rgba(59,130,246,0.15);
+}
+
+.avatarFallback {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.userName { font-size: 0.875rem; color: var(--text-secondary); }
+.logout   { color: var(--text-muted); }
+.logout:hover { color: var(--red) !important; }
+
+/* ─── Hamburger (mobile only) ───────────────────────────────────────────────── */
+.hamburger { display: none; margin-left: auto; }
+
+/* ─── Mobile drawer ─────────────────────────────────────────────────────────── */
+.drawer {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-base);
+  z-index: 99;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 1rem;
+  border-top: 1px solid var(--border-subtle);
+  animation: slideDown 0.18s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.drawerLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.drawerLink {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.drawerLink:hover { background: rgba(255,255,255,0.04); color: var(--text-primary); }
+.drawerActive     { background: rgba(59,130,246,0.08); color: var(--text-primary); }
+.drawerActive svg { color: var(--accent-blue); }
+
+.drawerUser {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  margin-top: auto;
+  border-top: 1px solid var(--border-subtle);
+}
+.drawerEmail { font-size: 0.875rem; color: var(--text-muted); }
+
+/* ─── Responsive ─────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .links  { display: none; }
+  .user   { display: none; }
+  .hamburger { display: flex; }
+}
+
+@media (max-width: 380px) {
+  .logo span { display: none; }
+}

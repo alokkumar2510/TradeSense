@@ -1,0 +1,142 @@
+.starBtn {
+  transition: transform var(--transition-fast), color var(--transition-fast);
+}
+.starBtn:hover:not(:disabled) { transform: scale(1.2); }
+.starBtn:disabled { opacity: 1; } /* keep amber star visible when already in watchlist */
+
+
+.searchSection {
+  text-align: center;
+  padding: 2.5rem 0 2rem;
+}
+.pageTitle {
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.pageSubtitle { color: var(--text-secondary); margin-bottom: 1.5rem; }
+
+.searchWrapper { position: relative; max-width: 680px; margin: 0 auto; }
+
+.searchForm {
+  display: flex;
+  align-items: center;
+  background: rgba(17, 24, 39, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 0.25rem 0.25rem 0.25rem 1rem;
+  gap: 0.75rem;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.searchForm:focus-within {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15), 0 4px 24px rgba(59,130,246,0.1);
+}
+.searchIcon { color: var(--text-muted); flex-shrink: 0; }
+.searchInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0.5rem 0;
+  font-size: 0.9375rem;
+  box-shadow: none;
+}
+.searchInput:focus { box-shadow: none; border: none; }
+.searchBtn { flex-shrink: 0; min-width: 100px; }
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  background: rgba(17, 24, 39, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  z-index: 50;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+.dropdownItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  text-align: left;
+}
+.dropdownItem:hover { background: rgba(255,255,255,0.04); }
+.dropSymbol { font-weight: 700; color: var(--text-primary); font-size: 0.875rem; min-width: 100px; }
+.dropName   { flex: 1; font-size: 0.8125rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.errorBanner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.20);
+  border-radius: var(--radius-md);
+  padding: 0.875rem 1rem;
+  color: var(--red);
+  margin: 1rem 0;
+}
+.errorBanner span { flex: 1; font-size: 0.875rem; }
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 5rem 2rem;
+  gap: 1rem;
+}
+.emptyIcon {
+  width: 80px; height: 80px;
+  background: rgba(59,130,246,0.06);
+  border: 1px solid rgba(59,130,246,0.15);
+  border-radius: var(--radius-xl);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent-blue);
+  margin-bottom: 0.5rem;
+  box-shadow: 0 0 32px rgba(59,130,246,0.1);
+}
+.emptyState h2 { font-size: 1.4rem; }
+.emptyState p  { color: var(--text-secondary); max-width: 400px; }
+.suggestions   { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-top: 0.5rem; }
+
+.quoteHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.symbolRow   { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem; }
+.symbol      { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.03em; }
+.companyName { color: var(--text-secondary); }
+.priceBlock  { text-align: right; }
+.price       { font-size: 2rem; font-weight: 800; font-family: var(--font-mono); letter-spacing: -0.02em; }
+.change      { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9375rem; font-weight: 600; justify-content: flex-end; margin-top: 0.2rem; }
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.chartTitle  { font-weight: 600; }
+.chartPeriod { font-size: 0.8125rem; color: var(--text-muted); font-family: var(--font-mono); }
+.chartContainer { height: 440px; }
+.chartSkeleton  { height: 440px; padding: 1rem; }

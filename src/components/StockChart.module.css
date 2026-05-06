@@ -1,0 +1,260 @@
+/* ─── StockChart.module.css ─────────────────────────────────────────────── */
+
+/* Root wrapper — fills parent height */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: transparent;
+  position: relative;
+}
+
+/* ─── Toolbar ────────────────────────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+
+.symbolLabel {
+  flex: 1;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ─── Chart type toggle ─────────────────────────────────────────────────── */
+.toggleGroup {
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.toggleBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0.25rem 0.625rem;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: background 120ms ease, color 120ms ease;
+  line-height: 1;
+}
+
+.toggleBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.toggleBtn.active {
+  background: rgba(0, 255, 163, 0.10);
+  color: var(--accent-green);
+  border: 1px solid rgba(0, 255, 163, 0.20);
+}
+
+/* ─── Period selector ───────────────────────────────────────────────────── */
+.periodGroup {
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.periodBtn {
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  transition: background 120ms ease, color 120ms ease;
+  line-height: 1;
+  min-width: 32px;
+  text-align: center;
+}
+
+.periodBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.periodBtn.active {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent-blue);
+  border: 1px solid rgba(59, 130, 246, 0.20);
+}
+
+/* ─── Canvas ─────────────────────────────────────────────────────────────── */
+.canvas {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.canvas > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ─── Crosshair tooltip overlay ──────────────────────────────────────────── */
+.tooltip {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  background: rgba(6, 10, 16, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 8px 10px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  min-width: 148px;
+}
+
+.tooltipDate {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tooltipGrid {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  row-gap: 3px;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.tooltipLabel {
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tooltipValue {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.green { color: var(--accent-green); }
+.red   { color: var(--red); }
+
+/* ─── Loading skeleton ──────────────────────────────────────────────────── */
+.skeletonPill {
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+.skeletonChart {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 1rem 1rem 0.5rem;
+  overflow: hidden;
+}
+
+.skeletonBar {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+  background: rgba(255, 255, 255, 0.03);
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1;   }
+}
+
+/* ─── Error / empty states ──────────────────────────────────────────────── */
+.errorState,
+.emptyState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.errorState {
+  color: var(--red);
+}
+
+.errorState p,
+.emptyState p {
+  font-size: 0.875rem;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.emptyState {
+  color: var(--text-muted);
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .toolbar {
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .toggleBtn {
+    padding: 0.25rem 0.4rem;
+    font-size: 0.6875rem;
+  }
+
+  .periodBtn {
+    padding: 0.25rem 0.375rem;
+    min-width: 26px;
+  }
+
+  .symbolLabel {
+    display: none;
+  }
+
+  .tooltip {
+    font-size: 0.6875rem;
+  }
+}
