@@ -1,3 +1,6 @@
+deployed site : tradesense.alokkumarsahu.in
+
+
 # TradeSense Pro — Setup Guide
 
 ## Prerequisites
