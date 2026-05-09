@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -247,7 +247,7 @@ export const usePaperStore = create<PaperState>()(
     }),
     {
       name: "tradesense-paper",
-      storage: safeLocalStorage,
+      storage: createJSONStorage(() => safeLocalStorage),
       partialize: s => ({
         capital: s.capital,
         initialCapital: s.initialCapital,
