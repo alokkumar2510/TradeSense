@@ -131,7 +131,6 @@ body {
   background: var(--bg-base);
   color: var(--text-primary);
   min-height: 100vh;
-  overflow: hidden;
 }
 
 /* ─── Scrollbar ─────────────────────────────────────────────────── */
