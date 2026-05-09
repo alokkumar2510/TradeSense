@@ -87,20 +87,34 @@ function updateEquity(
   return [...prev.slice(-500), { ts: Date.now(), equity }];
 }
 
+// ─── Safe storage (survives private-browsing / corrupted JSON) ───────────────
+
+const safeLocalStorage = {
+  getItem: (key: string): string | null => {
+    try { return localStorage.getItem(key); } catch { return null; }
+  },
+  setItem: (key: string, value: string): void => {
+    try { localStorage.setItem(key, value); } catch { /* ignore */ }
+  },
+  removeItem: (key: string): void => {
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+  },
+};
+
 // ─── Store ───────────────────────────────────────────────────────────────────
 
-const DEFAULTS = {
-  capital:        500000,
-  initialCapital: 500000,
+const makeDefaults = () => ({
+  capital:        500_000,
+  initialCapital: 500_000,
   positions:      {} as Record<string, Position>,
   orders:         [] as Order[],
-  equity:         [{ ts: Date.now(), equity: 500000 }] as EquityPoint[],
-};
+  equity:         [{ ts: Date.now(), equity: 500_000 }] as EquityPoint[],
+});
 
 export const usePaperStore = create<PaperState>()(
   persist(
     (set, get) => ({
-      ...DEFAULTS,
+      ...makeDefaults(),
 
       setCapital: (c) =>
         set({ capital: c, initialCapital: c, equity: [{ ts: Date.now(), equity: c }] }),
@@ -226,13 +240,14 @@ export const usePaperStore = create<PaperState>()(
 
       // ── Reset ─────────────────────────────────────────────────────
       reset: () => set({
-        ...DEFAULTS,
-        initialCapital: DEFAULTS.initialCapital,
-        equity: [{ ts: Date.now(), equity: DEFAULTS.initialCapital }],
+        ...makeDefaults(),
+        initialCapital: 500_000,
+        equity: [{ ts: Date.now(), equity: 500_000 }],
       }),
     }),
     {
       name: "tradesense-paper",
+      storage: safeLocalStorage,
       partialize: s => ({
         capital: s.capital,
         initialCapital: s.initialCapital,
