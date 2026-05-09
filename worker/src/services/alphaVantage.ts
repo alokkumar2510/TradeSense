@@ -24,9 +24,9 @@ export interface MACDResult {
 export async function fetchRSI(symbol: string, env: Env): Promise<RSIResult> {
   const url =
     `${BASE}?function=RSI&symbol=${encodeURIComponent(symbol)}` +
-    `&interval=daily&time_period=14&series_type=close&apikey=${env.ALPHA_VANTAGE_KEY}`;
+    `&interval=daily&time_period=14&series_type=close&apikey=${env.ALPHA_VANTAGE_KEY.trim()}`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "Accept": "application/json" } });
   if (res.status === 429) throw new Error("AV_RATE_LIMITED");
   if (!res.ok)            throw new Error(`AV RSI error: ${res.status}`);
 
@@ -35,9 +35,8 @@ export async function fetchRSI(symbol: string, env: Env): Promise<RSIResult> {
   // Alpha Vantage wraps data under a dynamic key
   const dataKey = Object.keys(json).find((k) => k.startsWith("Technical Analysis"));
   if (!dataKey) {
-    // Rate limit or invalid symbol — AV returns a Note field
     if (json["Note"] || json["Information"])  throw new Error("AV_RATE_LIMITED");
-    throw new Error("AV_RSI_PARSE_ERROR");
+    throw new Error(`AV_RSI_PARSE_ERROR: ${JSON.stringify(json)}`);
   }
 
   const timeSeries = json[dataKey] as Record<string, AVRSIDataPoint>;
@@ -51,9 +50,9 @@ export async function fetchRSI(symbol: string, env: Env): Promise<RSIResult> {
 export async function fetchMACD(symbol: string, env: Env): Promise<MACDResult> {
   const url =
     `${BASE}?function=MACD&symbol=${encodeURIComponent(symbol)}` +
-    `&interval=daily&series_type=close&apikey=${env.ALPHA_VANTAGE_KEY}`;
+    `&interval=daily&series_type=close&apikey=${env.ALPHA_VANTAGE_KEY.trim()}`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "Accept": "application/json" } });
   if (res.status === 429) throw new Error("AV_RATE_LIMITED");
   if (!res.ok)            throw new Error(`AV MACD error: ${res.status}`);
 

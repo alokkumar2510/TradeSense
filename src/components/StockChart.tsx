@@ -1,512 +1,476 @@
 "use client";
 
-/**
- * StockChart — production-grade TradingView Lightweight Charts v5 wrapper.
- *
- * Features:
- *  • Candlestick ↔ Area/Line chart toggle
- *  • Volume histogram sub-pane
- *  • Period filter (1M · 3M · 6M · 1Y · All)
- *  • Custom OHLCV crosshair tooltip overlay
- *  • ResizeObserver for responsive container
- *  • Proper cleanup — no memory leaks
- *  • Loading skeleton + API-failure state
- */
-
 import {
-  useEffect,
-  useRef,
-  useState,
-  useCallback,
-  memo,
+  useEffect, useRef, useState, useCallback, memo
 } from "react";
 import {
-  createChart,
-  CandlestickSeries,
-  AreaSeries,
-  HistogramSeries,
-  CrosshairMode,
-  ColorType,
-  type IChartApi,
-  type ISeriesApi,
-  type CandlestickSeriesOptions,
-  type AreaSeriesOptions,
-  type HistogramSeriesOptions,
-  type CandlestickData,
-  type AreaData,
-  type HistogramData,
-  type UTCTimestamp,
-  type MouseEventParams,
+  createChart, CandlestickSeries, AreaSeries, HistogramSeries, LineSeries,
+  CrosshairMode, ColorType,
+  type IChartApi, type ISeriesApi, type UTCTimestamp, type MouseEventParams,
 } from "lightweight-charts";
+import { useMarketStore } from "@/store/marketStore";
 import type { OHLCVBar } from "@/types";
-import styles from "./StockChart.module.css";
+import type { Timeframe } from "@/lib/workerApi";
 
-/* ─── Types ─────────────────────────────────────────────────────────────── */
-
-type ChartType = "candle" | "area";
-type Period    = "1M" | "3M" | "6M" | "1Y" | "ALL";
-
-interface Props {
-  data:    OHLCVBar[];
-  symbol?: string;
-  /** Pass `true` while the parent is fetching data */
-  loading?: boolean;
-  /** Pass an error string to show the error state */
-  error?: string | null;
-}
-
-/* ─── Constants ─────────────────────────────────────────────────────────── */
-
-const PERIOD_DAYS: Record<Period, number> = {
-  "1M":  30,
-  "3M":  90,
-  "6M":  180,
-  "1Y":  365,
-  "ALL": Infinity,
+/* ── Palette ─────────────────────────────────────────────────── */
+const C = {
+  up: "#00FFA3", down: "#EF4444",
+  upA: "rgba(0,255,163,0.10)", downA: "rgba(239,68,68,0.10)",
+  volUp: "rgba(0,255,163,0.38)", volDown: "rgba(239,68,68,0.38)",
+  ema9: "#F59E0B", ema21: "#3B82F6", ema50: "#A855F7",
+  bb: "rgba(59,130,246,0.35)", bbMid: "rgba(59,130,246,0.6)",
+  rsiLine: "#F59E0B", macdLine: "#3B82F6", sigLine: "#F59E0B", histColor: "#10B981",
+  grid: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.07)", text: "#6B7280",
 };
 
-const PERIODS: Period[] = ["1M", "3M", "6M", "1Y", "ALL"];
-
-/* ─── Dark theme tokens ─────────────────────────────────────────────────── */
-
-const CHART_BG        = "transparent";
-const GRID_COLOR      = "rgba(255,255,255,0.04)";
-const BORDER_COLOR    = "rgba(255,255,255,0.08)";
-const TEXT_COLOR      = "#9CA3AF";
-const UP_COLOR        = "#00FFA3";
-const DOWN_COLOR      = "#EF4444";
-const AREA_TOP        = "rgba(0,255,163,0.18)";
-const AREA_BOT        = "rgba(0,255,163,0)";
-const AREA_LINE       = "#00FFA3";
-const VOL_UP          = "rgba(0,255,163,0.35)";
-const VOL_DOWN        = "rgba(239,68,68,0.35)";
-
-/* ─── Data transformation ────────────────────────────────────────────────
- *
- * lightweight-charts expects { time: UTCTimestamp, open, high, low, close }
- * where time is UNIX seconds (number).
- * OHLCVBar.time is already UNIX seconds from the FMP worker.
- */
-
-function toCandles(bars: OHLCVBar[]): CandlestickData[] {
-  return bars
-    .filter(b => b.open && b.high && b.low && b.close)
-    .map(b => ({
-      time:  b.time as UTCTimestamp,
-      open:  b.open,
-      high:  b.high,
-      low:   b.low,
-      close: b.close,
-    }));
+/* ── Computation helpers ─────────────────────────────────────── */
+function ema(bars: OHLCVBar[], period: number): { time: UTCTimestamp; value: number }[] {
+  const k = 2 / (period + 1); let e = 0;
+  return bars.reduce<{ time: UTCTimestamp; value: number }[]>((acc, b, i) => {
+    e = i === 0 ? b.close : b.close * k + e * (1 - k);
+    if (i >= period - 1) acc.push({ time: b.time as UTCTimestamp, value: e });
+    return acc;
+  }, []);
 }
 
-function toArea(bars: OHLCVBar[]): AreaData[] {
-  return bars
-    .filter(b => b.close)
-    .map(b => ({
-      time:  b.time as UTCTimestamp,
-      value: b.close,
-    }));
+function rsiSeries(bars: OHLCVBar[], period = 14) {
+  const out: { time: UTCTimestamp; value: number }[] = [];
+  if (bars.length < period + 1) return out;
+  let avgG = 0, avgL = 0;
+  for (let i = 1; i <= period; i++) { const d = bars[i].close - bars[i-1].close; d > 0 ? (avgG += d) : (avgL -= d); }
+  avgG /= period; avgL /= period;
+  for (let i = period; i < bars.length; i++) {
+    if (i > period) { const d = bars[i].close - bars[i-1].close; avgG = (avgG*(period-1)+Math.max(d,0))/period; avgL = (avgL*(period-1)+Math.max(-d,0))/period; }
+    out.push({ time: bars[i].time as UTCTimestamp, value: avgL === 0 ? 100 : 100 - 100/(1+avgG/avgL) });
+  }
+  return out;
 }
 
-function toVolume(bars: OHLCVBar[]): HistogramData[] {
-  return bars
-    .filter(b => b.volume)
-    .map(b => ({
-      time:  b.time as UTCTimestamp,
-      value: b.volume,
-      color: b.close >= b.open ? VOL_UP : VOL_DOWN,
-    }));
+function macdSeries(bars: OHLCVBar[]) {
+  const e12 = ema(bars,12), e26 = ema(bars,26);
+  const off  = e12.length - e26.length;
+  const macd = e26.map((v,i) => ({ time: v.time, value: e12[i+off].value - v.value }));
+  let sv = 0; const k = 2/10;
+  const sig = macd.reduce<{time: UTCTimestamp; value: number}[]>((acc,m,i) => {
+    sv = i===0 ? m.value : m.value*k + sv*(1-k);
+    if (i >= 8) acc.push({ time: m.time, value: sv });
+    return acc;
+  }, []);
+  const off2 = macd.length - sig.length;
+  const hist = sig.map((s,i) => { const h = macd[i+off2].value-s.value; return { time: s.time, value: h, color: h>=0?C.histColor:C.down }; });
+  return { macd, sig, hist };
 }
 
-/** Slice data to the most-recent N calendar days */
-function slicePeriod(bars: OHLCVBar[], period: Period): OHLCVBar[] {
-  if (period === "ALL" || bars.length === 0) return bars;
-  const days   = PERIOD_DAYS[period];
-  const cutoff = bars[bars.length - 1].time - days * 86_400;
-  return bars.filter(b => b.time >= cutoff);
+function bollingerBands(bars: OHLCVBar[], period=20, mult=2) {
+  const upper: {time:UTCTimestamp;value:number}[] = [], lower: {time:UTCTimestamp;value:number}[] = [], mid: {time:UTCTimestamp;value:number}[] = [];
+  for (let i = period-1; i < bars.length; i++) {
+    const sl = bars.slice(i-period+1,i+1).map(b=>b.close);
+    const mn = sl.reduce((a,v)=>a+v,0)/period;
+    const sd = Math.sqrt(sl.reduce((a,v)=>a+(v-mn)**2,0)/period);
+    const t  = bars[i].time as UTCTimestamp;
+    upper.push({time:t,value:mn+mult*sd}); lower.push({time:t,value:mn-mult*sd}); mid.push({time:t,value:mn});
+  }
+  return { upper, lower, mid };
 }
 
-/* ─── Tooltip state ─────────────────────────────────────────────────────── */
-
-interface TooltipData {
-  time:   string;
-  open:   number;
-  high:   number;
-  low:    number;
-  close:  number;
-  volume: number;
-  x:      number;
-  y:      number;
+function toHeikinAshi(bars: OHLCVBar[]): OHLCVBar[] {
+  return bars.map((b,i,a) => {
+    const haC=(b.open+b.high+b.low+b.close)/4, haO=i===0?(b.open+b.close)/2:(a[i-1].open+a[i-1].close)/2;
+    return { ...b, open:haO, high:Math.max(b.high,haO,haC), low:Math.min(b.low,haO,haC), close:haC };
+  });
 }
 
-/* ─── StockChart component ─────────────────────────────────────────────── */
+/* ── Types ──────────────────────────────────────────────────── */
+type ChartType = "candle" | "area" | "ha";
+type Overlay   = "ema9" | "ema21" | "ema50" | "bb";
+type SubPanel  = "volume" | "rsi" | "macd";
 
-function StockChart({ data, symbol, loading = false, error = null }: Props) {
-  const containerRef  = useRef<HTMLDivElement>(null);
-  const chartRef      = useRef<IChartApi | null>(null);
-  const candleRef     = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const areaRef       = useRef<ISeriesApi<"Area"> | null>(null);
-  const volumeRef     = useRef<ISeriesApi<"Histogram"> | null>(null);
+const TIMEFRAMES: Timeframe[] = ["1D","5D","1M","3M","6M","1Y","5Y","MAX"];
+const CHART_TYPES = [{ key:"candle" as ChartType, label:"Candles" },{ key:"ha" as ChartType, label:"Heikin Ashi" },{ key:"area" as ChartType, label:"Area" }];
 
+/* ── Shared chart options factory ────────────────────────────── */
+function chartOpts(height: number, timeVisible=true) {
+  return {
+    layout:    { background: { type:ColorType.Solid, color:"transparent" }, textColor:C.text, fontSize:11 },
+    grid:      { vertLines:{ color:C.grid }, horzLines:{ color:C.grid } },
+    crosshair: { mode:CrosshairMode.Normal },
+    rightPriceScale: { borderColor:C.border, scaleMargins:{ top:0.08, bottom:0.04 } },
+    timeScale: { borderColor:C.border, timeVisible, secondsVisible:false },
+    height, handleScroll:true, handleScale:true,
+  } as const;
+}
+
+/* ── Button styles ───────────────────────────────────────────── */
+const BTN: React.CSSProperties = { background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:5, color:"#6B7280", fontSize:"0.68rem", fontWeight:600, cursor:"pointer", padding:"0.2rem 0.5rem", letterSpacing:"0.04em", transition:"all 0.12s ease" };
+const BTNA: React.CSSProperties = { ...BTN, background:"rgba(59,130,246,0.18)", border:"1px solid rgba(59,130,246,0.4)", color:"#60A5FA" };
+const BTNOL: Record<Overlay,React.CSSProperties> = {
+  ema9:  { ...BTN, background:"rgba(245,158,11,0.15)", border:"1px solid #F59E0B60", color:C.ema9  },
+  ema21: { ...BTN, background:"rgba(59,130,246,0.15)", border:"1px solid #3B82F660", color:C.ema21 },
+  ema50: { ...BTN, background:"rgba(168,85,247,0.15)", border:"1px solid #A855F760", color:C.ema50 },
+  bb:    { ...BTN, background:"rgba(59,130,246,0.12)", border:"1px solid rgba(59,130,246,0.35)", color:"#93C5FD" },
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   StockChart
+   - Reads from Zustand store (not props) for live reactivity
+   - Full chart re-build: only on symbol / chartType / overlays / subPanel change
+   - Live tick: calls mainSeries.current.update() — NO chart recreation
+═══════════════════════════════════════════════════════════════ */
+interface Props {
+  onTfChange?: (tf: Timeframe) => void;
+}
+
+const StockChart = memo(function StockChart({ onTfChange }: Props) {
+  /* ── Store selectors ── */
+  const symbol        = useMarketStore(s => s.symbol);
+  const history       = useMarketStore(s => s.history);
+  const timeframe     = useMarketStore(s => s.timeframe);
+  const historyLoading = useMarketStore(s => s.historyLoading);
+  const initialising  = useMarketStore(s => s.initialising);
+  const error         = useMarketStore(s => s.error);
+
+  /* ── Local UI state ── */
   const [chartType, setChartType] = useState<ChartType>("candle");
-  const [period,    setPeriod]    = useState<Period>("6M");
-  const [tooltip,   setTooltip]   = useState<TooltipData | null>(null);
+  const [overlays,  setOverlays]  = useState<Set<Overlay>>(new Set(["ema9","ema21","ema50"]));
+  const [subPanel,  setSubPanel]  = useState<SubPanel>("volume");
+  const [tooltip,   setTooltip]   = useState<{ bar: OHLCVBar } | null>(null);
+  const [heights,   setHeights]   = useState({ main: 340, sub: 120 });
 
-  /* ── Build chart instance once ───────────────────────────────────────── */
+  /* ── Refs ── */
+  const mainRef       = useRef<HTMLDivElement>(null);
+  const subRef        = useRef<HTMLDivElement>(null);
+  const chartRef      = useRef<IChartApi | null>(null);
+  const subChartRef   = useRef<IChartApi | null>(null);
+  const mainSeries    = useRef<ISeriesApi<any> | null>(null);
+  const subSeries     = useRef<ISeriesApi<any> | null>(null);
+  const ema9Series    = useRef<ISeriesApi<any> | null>(null);
+  const ema21Series   = useRef<ISeriesApi<any> | null>(null);
+  const ema50Series   = useRef<ISeriesApi<any> | null>(null);
+  const bbUpperSeries = useRef<ISeriesApi<any> | null>(null);
+  const bbLowerSeries = useRef<ISeriesApi<any> | null>(null);
+  const bbMidSeries   = useRef<ISeriesApi<any> | null>(null);
+  const macdLineSeries= useRef<ISeriesApi<any> | null>(null);
+  const sigLineSeries = useRef<ISeriesApi<any> | null>(null);
+  const prevSymbol    = useRef("");
+  const prevTf        = useRef<Timeframe>("6M");
+  const prevType      = useRef<ChartType>("candle");
+  const prevOverlays  = useRef<string>("");
+  const prevSubPanel  = useRef<SubPanel>("volume");
+  const isBuilt       = useRef(false);
+
+  /* ── Responsive height ── */
   useEffect(() => {
-    const el = containerRef.current;
+    const el = mainRef.current?.parentElement?.parentElement;
     if (!el) return;
-
-    /* ── Create chart ── */
-    const chart = createChart(el, {
-      width:  el.clientWidth,
-      height: el.clientHeight || 400,
-      layout: {
-        background: { type: ColorType.Solid, color: CHART_BG },
-        textColor:  TEXT_COLOR,
-        fontSize:   11,
-        fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif",
-      },
-      grid: {
-        vertLines: { color: GRID_COLOR },
-        horzLines: { color: GRID_COLOR },
-      },
-      crosshair: {
-        mode:       CrosshairMode.Normal,
-        vertLine: {
-          color:       "rgba(255,255,255,0.15)",
-          labelBackgroundColor: "#1A2233",
-        },
-        horzLine: {
-          color:       "rgba(255,255,255,0.15)",
-          labelBackgroundColor: "#1A2233",
-        },
-      },
-      rightPriceScale: {
-        borderColor: BORDER_COLOR,
-        scaleMargins: { top: 0.08, bottom: 0.28 }, // leave room for volume pane
-      },
-      timeScale: {
-        borderColor:    BORDER_COLOR,
-        timeVisible:    true,
-        secondsVisible: false,
-        barSpacing:     8,
-      },
-      handleScale:  { axisPressedMouseMove: { time: true, price: false } },
-      handleScroll: { mouseWheel: true, pressedMouseMove: true },
+    const ob = new ResizeObserver(([e]) => {
+      const h = e.contentRect.height;
+      if (h > 300) setHeights({ main: Math.floor(h * 0.72), sub: Math.floor(h * 0.26) });
     });
-
-    /* ── Candlestick series ── */
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor:         UP_COLOR,
-      downColor:       DOWN_COLOR,
-      borderUpColor:   UP_COLOR,
-      borderDownColor: DOWN_COLOR,
-      wickUpColor:     UP_COLOR,
-      wickDownColor:   DOWN_COLOR,
-      priceScaleId:    "right",
-      visible:         true,
-    } as Partial<CandlestickSeriesOptions>);
-
-    /* ── Area series (hidden initially) ── */
-    const areaSeries = chart.addSeries(AreaSeries, {
-      topColor:      AREA_TOP,
-      bottomColor:   AREA_BOT,
-      lineColor:     AREA_LINE,
-      lineWidth:     2,
-      priceScaleId:  "right",
-      visible:       false,
-    } as Partial<AreaSeriesOptions>);
-
-    /* ── Volume histogram — separate price scale ── */
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      priceFormat:  { type: "volume" },
-      priceScaleId: "volume",
-    } as Partial<HistogramSeriesOptions>);
-
-    // Volume scale sits at the bottom 25% of the pane
-    chart.priceScale("volume").applyOptions({
-      scaleMargins: { top: 0.75, bottom: 0 },
-      borderColor:  BORDER_COLOR,
-    });
-
-    chartRef.current  = chart;
-    candleRef.current = candleSeries;
-    areaRef.current   = areaSeries;
-    volumeRef.current = volumeSeries;
-
-    /* ── ResizeObserver ── */
-    const ro = new ResizeObserver(entries => {
-      const entry = entries[0];
-      if (!entry) return;
-      const { width, height } = entry.contentRect;
-      chart.applyOptions({ width, height });
-      chart.timeScale().fitContent();
-    });
-    ro.observe(el);
-
-    /* ── Crosshair tooltip ── */
-    chart.subscribeCrosshairMove((param: MouseEventParams) => {
-      if (
-        !param.point ||
-        !param.time ||
-        param.point.x < 0 ||
-        param.point.y < 0
-      ) {
-        setTooltip(null);
-        return;
-      }
-
-      const cs = candleSeries.dataByIndex(
-        param.logical ?? 0
-      ) as CandlestickData | undefined;
-
-      if (!cs) { setTooltip(null); return; }
-
-      // Translate unix timestamp → readable date
-      const d    = new Date((cs.time as number) * 1000);
-      const date = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-
-      // Find matching volume bar
-      const volBar = data.find(b => b.time === (cs.time as number));
-
-      setTooltip({
-        time:   date,
-        open:   cs.open,
-        high:   cs.high,
-        low:    cs.low,
-        close:  cs.close,
-        volume: volBar?.volume ?? 0,
-        x:      param.point.x,
-        y:      param.point.y,
-      });
-    });
-
-    return () => {
-      ro.disconnect();
-      chart.unsubscribeClick(() => {});
-      chart.remove();
-      chartRef.current  = null;
-      candleRef.current = null;
-      areaRef.current   = null;
-      volumeRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    ob.observe(el);
+    return () => ob.disconnect();
   }, []);
 
-  /* ── Update series data when data / period changes ───────────────────── */
+  /* ── Destroy helper ── */
+  const destroyCharts = useCallback(() => {
+    try { chartRef.current?.remove(); }    catch {}
+    try { subChartRef.current?.remove(); } catch {}
+    chartRef.current = subChartRef.current = mainSeries.current = subSeries.current = null;
+    ema9Series.current = ema21Series.current = ema50Series.current = null;
+    bbUpperSeries.current = bbLowerSeries.current = bbMidSeries.current = null;
+    macdLineSeries.current = sigLineSeries.current = null;
+    isBuilt.current = false;
+  }, []);
+
+  /* ── FULL rebuild: symbol / chartType / overlays / subPanel change ── */
   useEffect(() => {
-    if (!candleRef.current || !areaRef.current || !volumeRef.current) return;
-    if (!data.length) return;
+    if (!mainRef.current || !subRef.current) return;
+    if (!history.length) return;
 
-    const sliced = slicePeriod(data, period);
-    if (!sliced.length) return;
+    const symbolChanged   = prevSymbol.current !== symbol;
+    const tfChanged       = prevTf.current !== timeframe;
+    const typeChanged     = prevType.current !== chartType;
+    const overlayKey      = [...overlays].sort().join(",");
+    const overlayChanged  = prevOverlays.current !== overlayKey;
+    const panelChanged    = prevSubPanel.current !== subPanel;
 
-    candleRef.current.setData(toCandles(sliced));
-    areaRef.current.setData(toArea(sliced));
-    volumeRef.current.setData(toVolume(sliced));
+    const needsRebuild = symbolChanged || tfChanged || typeChanged || overlayChanged || panelChanged || !isBuilt.current;
+    if (!needsRebuild) return;
 
-    chartRef.current?.timeScale().fitContent();
-  }, [data, period]);
+    prevSymbol.current   = symbol;
+    prevTf.current       = timeframe;
+    prevType.current     = chartType;
+    prevOverlays.current = overlayKey;
+    prevSubPanel.current = subPanel;
 
-  /* ── Toggle chart type ───────────────────────────────────────────────── */
+    destroyCharts();
+
+    /* ── Main chart ── */
+    const mc = createChart(mainRef.current, chartOpts(heights.main));
+    chartRef.current = mc;
+
+    const valid = (chartType === "ha" ? toHeikinAshi(history) : history)
+      .filter(b => b.open && b.high && b.low && b.close);
+
+    if (chartType === "area") {
+      const s = mc.addSeries(AreaSeries, { topColor:C.upA, bottomColor:"transparent", lineColor:C.up, lineWidth:2 });
+      s.setData(valid.map(b => ({ time:b.time as UTCTimestamp, value:b.close })));
+      mainSeries.current = s;
+    } else {
+      const s = mc.addSeries(CandlestickSeries, { upColor:C.up, downColor:C.down, borderUpColor:C.up, borderDownColor:C.down, wickUpColor:C.up, wickDownColor:C.down });
+      s.setData(valid.map(b => ({ time:b.time as UTCTimestamp, open:b.open, high:b.high, low:b.low, close:b.close })));
+      mainSeries.current = s;
+    }
+
+    /* Overlays */
+    if (overlays.has("ema9")) {
+      const s = mc.addSeries(LineSeries, { color:C.ema9,  lineWidth:1, priceLineVisible:false, lastValueVisible:false });
+      s.setData(ema(valid,9));
+      ema9Series.current = s;
+    }
+    if (overlays.has("ema21")) {
+      const s = mc.addSeries(LineSeries, { color:C.ema21, lineWidth:1, priceLineVisible:false, lastValueVisible:false });
+      s.setData(ema(valid,21));
+      ema21Series.current = s;
+    }
+    if (overlays.has("ema50")) {
+      const s = mc.addSeries(LineSeries, { color:C.ema50, lineWidth:1, priceLineVisible:false, lastValueVisible:false });
+      s.setData(ema(valid,50));
+      ema50Series.current = s;
+    }
+    if (overlays.has("bb") && valid.length >= 20) {
+      const bb = bollingerBands(valid);
+      const sU = mc.addSeries(LineSeries,{color:C.bb,lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+      sU.setData(bb.upper);
+      bbUpperSeries.current = sU;
+      const sL = mc.addSeries(LineSeries,{color:C.bb,lineWidth:1,priceLineVisible:false,lastValueVisible:false});
+      sL.setData(bb.lower);
+      bbLowerSeries.current = sL;
+      const sM = mc.addSeries(LineSeries,{color:C.bbMid,lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false});
+      sM.setData(bb.mid);
+      bbMidSeries.current = sM;
+    }
+
+    /* ── Sub chart ── */
+    const sc = createChart(subRef.current, { ...chartOpts(heights.sub), rightPriceScale:{ borderColor:C.border, scaleMargins:{ top:0.1, bottom:0.1 } } });
+    subChartRef.current = sc;
+
+    let firstSub: ISeriesApi<any> | null = null;
+    if (subPanel === "volume") {
+      const vs = sc.addSeries(HistogramSeries,{ priceFormat:{type:"volume"}, priceScaleId:"right" });
+      vs.setData(valid.map(b => ({ time:b.time as UTCTimestamp, value:b.volume, color:b.close>=b.open?C.volUp:C.volDown })));
+      firstSub = subSeries.current = vs;
+    } else if (subPanel === "rsi" && valid.length > 15) {
+      const rs = sc.addSeries(LineSeries,{ color:C.rsiLine, lineWidth:2, priceLineVisible:false, lastValueVisible:true });
+      rs.setData(rsiSeries(valid));
+      rs.createPriceLine({ price:70, color:C.down, lineWidth:1, lineStyle:2, axisLabelVisible:true, title:"OB" });
+      rs.createPriceLine({ price:30, color:C.up,   lineWidth:1, lineStyle:2, axisLabelVisible:true, title:"OS" });
+      firstSub = subSeries.current = rs;
+    } else if (subPanel === "macd" && valid.length > 35) {
+      const { macd:md, sig, hist:hd } = macdSeries(valid);
+      const hs = sc.addSeries(HistogramSeries,{ priceScaleId:"right", color:C.histColor });
+      hs.setData(hd);
+      const ms = sc.addSeries(LineSeries,{ color:C.macdLine, lineWidth:2, priceLineVisible:false, lastValueVisible:false });
+      ms.setData(md);
+      macdLineSeries.current = ms;
+      const ss = sc.addSeries(LineSeries,{ color:C.sigLine,  lineWidth:1, priceLineVisible:false, lastValueVisible:false });
+      ss.setData(sig);
+      sigLineSeries.current = ss;
+      firstSub = subSeries.current = hs;
+    }
+
+    /* Crosshair + timescale sync */
+    const barMap = new Map(valid.map(b => [b.time, b]));
+    mc.subscribeCrosshairMove((p: MouseEventParams) => {
+      if (!p.time) { setTooltip(null); return; }
+      const b = barMap.get(p.time as number);
+      if (b && p.point) setTooltip({ bar:b });
+      if (firstSub) {
+        const fv = p.seriesData.values().next().value as {value?:number}|undefined;
+        sc.setCrosshairPosition(fv?.value ?? 0, p.time as UTCTimestamp, firstSub);
+      }
+    });
+    mc.timeScale().subscribeVisibleLogicalRangeChange(r => { if (r) sc.timeScale().setVisibleLogicalRange(r); });
+    sc.timeScale().subscribeVisibleLogicalRangeChange(r => { if (r) mc.timeScale().setVisibleLogicalRange(r); });
+
+    mc.timeScale().fitContent();
+    sc.timeScale().fitContent();
+    isBuilt.current = true;
+
+    return destroyCharts;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, timeframe, chartType, overlays, subPanel, heights, history.length === 0 ? 0 : 1, destroyCharts]);
+
+  /* ── LIVE TICK: update last candle only, no chart recreation ── */
   useEffect(() => {
-    if (!candleRef.current || !areaRef.current) return;
-    candleRef.current.applyOptions({ visible: chartType === "candle" });
-    areaRef.current.applyOptions({  visible: chartType === "area"   });
-  }, [chartType]);
+    if (!isBuilt.current || !mainSeries.current || !history.length) return;
+    const last = history[history.length - 1];
+    if (!last) return;
 
-  /* ── Handlers ────────────────────────────────────────────────────────── */
-  const handleTypeToggle = useCallback((t: ChartType) => setChartType(t), []);
-  const handlePeriod     = useCallback((p: Period)    => setPeriod(p),    []);
+    try {
+      if (chartType === "area") {
+        mainSeries.current.update({ time: last.time as UTCTimestamp, value: last.close });
+      } else {
+        const hA = chartType === "ha" ? toHeikinAshi(history) : history;
+        const lastHA = hA[hA.length - 1];
+        mainSeries.current.update({ time: lastHA.time as UTCTimestamp, open:lastHA.open, high:lastHA.high, low:lastHA.low, close:lastHA.close });
+      }
+      
+      const valid = chartType === "ha" ? toHeikinAshi(history).filter(b => b.open && b.high && b.low && b.close) : history.filter(b => b.open && b.high && b.low && b.close);
+      
+      // Update Overlays
+      if (overlays.has("ema9") && ema9Series.current) {
+        const e = ema(valid, 9);
+        if (e.length) ema9Series.current.update(e[e.length - 1]);
+      }
+      if (overlays.has("ema21") && ema21Series.current) {
+        const e = ema(valid, 21);
+        if (e.length) ema21Series.current.update(e[e.length - 1]);
+      }
+      if (overlays.has("ema50") && ema50Series.current) {
+        const e = ema(valid, 50);
+        if (e.length) ema50Series.current.update(e[e.length - 1]);
+      }
+      if (overlays.has("bb") && bbUpperSeries.current && bbLowerSeries.current && bbMidSeries.current && valid.length >= 20) {
+        const bb = bollingerBands(valid);
+        if (bb.upper.length) {
+          bbUpperSeries.current.update(bb.upper[bb.upper.length - 1]);
+          bbLowerSeries.current.update(bb.lower[bb.lower.length - 1]);
+          bbMidSeries.current.update(bb.mid[bb.mid.length - 1]);
+        }
+      }
 
-  /* ── Loading state ───────────────────────────────────────────────────── */
-  if (loading) {
-    return (
-      <div className={styles.wrap}>
-        <div className={styles.toolbar}>
-          <div className={styles.skeletonPill} style={{ width: 120 }} />
-          <div className={styles.skeletonPill} style={{ width: 200 }} />
-        </div>
-        <div className={styles.skeletonChart} aria-busy="true" aria-label="Loading chart…">
-          {/* Shimmer bars */}
-          {Array.from({ length: 28 }, (_, i) => (
-            <div
-              key={i}
-              className={styles.skeletonBar}
-              style={{
-                height: `${30 + Math.sin(i * 0.7) * 22 + Math.cos(i * 0.4) * 18}%`,
-                animationDelay: `${i * 40}ms`,
-              }}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
+      // Update SubPanel
+      if (subPanel === "volume" && subSeries.current) {
+        subSeries.current.update({ time: last.time as UTCTimestamp, value: last.volume, color: last.close >= last.open ? C.volUp : C.volDown });
+      } else if (subPanel === "rsi" && subSeries.current && valid.length > 15) {
+        const rsi = rsiSeries(valid);
+        if (rsi.length) subSeries.current.update(rsi[rsi.length - 1]);
+      } else if (subPanel === "macd" && subSeries.current && macdLineSeries.current && sigLineSeries.current && valid.length > 35) {
+        const { macd:md, sig, hist:hd } = macdSeries(valid);
+        if (hd.length && md.length && sig.length) {
+          subSeries.current.update(hd[hd.length - 1]);
+          macdLineSeries.current.update(md[md.length - 1]);
+          sigLineSeries.current.update(sig[sig.length - 1]);
+        }
+      }
+    } catch {
+      // Stale series after rebuild — ignore
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history[history.length - 1]?.close, history[history.length - 1]?.high, history[history.length - 1]?.low, history[history.length - 1]?.volume, history[history.length - 1]?.time]);
 
-  /* ── Error state ─────────────────────────────────────────────────────── */
-  if (error) {
-    return (
-      <div className={styles.wrap}>
-        <div className={styles.errorState} role="alert">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <circle cx="12" cy="16" r="0.5" fill="currentColor" />
-          </svg>
-          <p>{error}</p>
-        </div>
-      </div>
-    );
-  }
+  /* ── Overlay toggle ── */
+  const toggleOverlay = (o: Overlay) => setOverlays(prev => { const n = new Set(prev); n.has(o) ? n.delete(o) : n.add(o); return n; });
 
-  /* ── Empty state ─────────────────────────────────────────────────────── */
-  if (!data.length) {
-    return (
-      <div className={styles.wrap}>
-        <div className={styles.emptyState}>
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-          </svg>
-          <p>No chart data available</p>
-        </div>
-      </div>
-    );
-  }
+  const loading = initialising || historyLoading;
+
+  /* ── Period PnL ── */
+  const pnl    = history.length > 1 ? ((history[history.length-1].close - history[0].close) / history[0].close) * 100 : 0;
+  const pnlCol = pnl >= 0 ? C.up : C.down;
+
+  /* ── Render guards ── */
+  if (loading && !history.length) return (
+    <div style={{ display:"flex", flexDirection:"column", gap:"0.5rem", padding:"1rem", height:"100%" }}>
+      <div style={{ flex:3, background:"rgba(255,255,255,0.04)", borderRadius:8, animation:"pulse 1.5s ease-in-out infinite" }} />
+      <div style={{ flex:1, background:"rgba(255,255,255,0.04)", borderRadius:8, animation:"pulse 1.5s ease-in-out infinite" }} />
+    </div>
+  );
+  if (error && !history.length) return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", flexDirection:"column", gap:"0.5rem", color:"#EF4444", fontSize:"0.82rem" }}>
+      ⚠ {error}
+    </div>
+  );
+  if (!history.length) return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", color:"#6B7280", fontSize:"0.82rem" }}>
+      Search a symbol to load the terminal
+    </div>
+  );
 
   return (
-    <div className={styles.wrap}>
+    <div style={{ display:"flex", flexDirection:"column", height:"100%", userSelect:"none" }}>
+
       {/* ── Toolbar ── */}
-      <div className={styles.toolbar}>
-        {/* Chart type toggle */}
-        <div className={styles.toggleGroup} role="group" aria-label="Chart type">
-          <button
-            id="chart-type-candle"
-            className={`${styles.toggleBtn} ${chartType === "candle" ? styles.active : ""}`}
-            onClick={() => handleTypeToggle("candle")}
-            title="Candlestick chart"
-            aria-pressed={chartType === "candle"}
-          >
-            <CandleIcon />
-            Candles
-          </button>
-          <button
-            id="chart-type-area"
-            className={`${styles.toggleBtn} ${chartType === "area" ? styles.active : ""}`}
-            onClick={() => handleTypeToggle("area")}
-            title="Area chart"
-            aria-pressed={chartType === "area"}
-          >
-            <AreaIcon />
-            Area
-          </button>
-        </div>
+      <div style={{ display:"flex", alignItems:"center", gap:"0.375rem", padding:"0.5rem 0.875rem", borderBottom:"1px solid rgba(255,255,255,0.06)", background:"rgba(0,0,0,0.18)", flexWrap:"wrap" }}>
 
-        {/* Symbol label */}
-        {symbol && <span className={styles.symbolLabel}>{symbol}</span>}
+        {TIMEFRAMES.map(tf => (
+          <button key={tf} onClick={() => onTfChange?.(tf)} style={tf===timeframe ? BTNA : BTN}>{tf}</button>
+        ))}
 
-        {/* Period selector */}
-        <div className={styles.periodGroup} role="group" aria-label="Chart period">
-          {PERIODS.map(p => (
-            <button
-              key={p}
-              id={`chart-period-${p.toLowerCase()}`}
-              className={`${styles.periodBtn} ${period === p ? styles.active : ""}`}
-              onClick={() => handlePeriod(p)}
-              aria-pressed={period === p}
-            >
-              {p}
-            </button>
-          ))}
+        <div style={{ width:1, height:16, background:"rgba(255,255,255,0.07)", margin:"0 0.2rem" }} />
+
+        {CHART_TYPES.map(ct => (
+          <button key={ct.key} onClick={() => setChartType(ct.key)} style={ct.key===chartType ? BTNA : BTN}>{ct.label}</button>
+        ))}
+
+        <div style={{ width:1, height:16, background:"rgba(255,255,255,0.07)", margin:"0 0.2rem" }} />
+
+        {(["ema9","ema21","ema50","bb"] as Overlay[]).map(o => (
+          <button key={o} onClick={() => toggleOverlay(o)} style={overlays.has(o) ? BTNOL[o] : BTN}>
+            {o==="bb" ? "BB" : o.toUpperCase()}
+          </button>
+        ))}
+
+        <div style={{ width:1, height:16, background:"rgba(255,255,255,0.07)", margin:"0 0.2rem" }} />
+
+        {(["volume","rsi","macd"] as SubPanel[]).map(p => (
+          <button key={p} onClick={() => setSubPanel(p)} style={p===subPanel ? BTNA : BTN}>{p.toUpperCase()}</button>
+        ))}
+
+        {/* Live indicator */}
+        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:"0.5rem" }}>
+          <span style={{ display:"flex", alignItems:"center", gap:"0.3rem", fontSize:"0.65rem", color:C.up }}>
+            <span style={{ width:6, height:6, borderRadius:"50%", background:C.up, animation:"pulse 1.5s ease-in-out infinite", display:"inline-block" }} />
+            LIVE
+          </span>
+          <span style={{ fontFamily:"var(--font-mono)", fontSize:"0.72rem", color:pnlCol, fontWeight:700 }}>
+            {pnl>=0?"+":""}{pnl.toFixed(2)}% ({timeframe})
+          </span>
         </div>
       </div>
 
-      {/* ── Chart canvas ── */}
-      <div className={styles.canvas} ref={containerRef} aria-label="Stock price chart">
-        {/* Crosshair tooltip overlay */}
+      {/* ── Chart area ── */}
+      <div style={{ position:"relative", flex:1, display:"flex", flexDirection:"column", minHeight:0 }}>
+
+        {/* OHLCV tooltip */}
         {tooltip && (
-          <div
-            className={styles.tooltip}
-            style={{
-              left: tooltip.x + 12,
-              top:  Math.max(8, tooltip.y - 90),
-            }}
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <div className={styles.tooltipDate}>{tooltip.time}</div>
-            <div className={styles.tooltipGrid}>
-              <span className={styles.tooltipLabel}>O</span>
-              <span className={styles.tooltipValue}>
-                {fmt(tooltip.open)}
+          <div style={{ position:"absolute", top:8, left:12, zIndex:10, display:"flex", gap:"0.625rem", padding:"0.3rem 0.6rem", background:"rgba(0,0,0,0.75)", borderRadius:6, border:"1px solid rgba(255,255,255,0.08)", backdropFilter:"blur(8px)", pointerEvents:"none" }}>
+            {([["O",tooltip.bar.open],["H",tooltip.bar.high],["L",tooltip.bar.low],["C",tooltip.bar.close],["V",tooltip.bar.volume]] as [string,number][]).map(([l,v]) => (
+              <span key={l} style={{ fontSize:"0.7rem", fontFamily:"var(--font-mono)" }}>
+                <span style={{ color:"#6B7280", marginRight:2 }}>{l}</span>
+                <span style={{ color: l==="H"?C.up : l==="L"?C.down : "#E5E7EB" }}>
+                  {l==="V" ? (v>1e6?(v/1e6).toFixed(1)+"M":(v/1e3).toFixed(0)+"K") : v.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                </span>
               </span>
-              <span className={styles.tooltipLabel}>H</span>
-              <span className={`${styles.tooltipValue} ${styles.green}`}>
-                {fmt(tooltip.high)}
-              </span>
-              <span className={styles.tooltipLabel}>L</span>
-              <span className={`${styles.tooltipValue} ${styles.red}`}>
-                {fmt(tooltip.low)}
-              </span>
-              <span className={styles.tooltipLabel}>C</span>
-              <span
-                className={`${styles.tooltipValue} ${
-                  tooltip.close >= tooltip.open ? styles.green : styles.red
-                }`}
-              >
-                {fmt(tooltip.close)}
-              </span>
-              <span className={styles.tooltipLabel}>V</span>
-              <span className={styles.tooltipValue}>
-                {fmtVol(tooltip.volume)}
-              </span>
-            </div>
+            ))}
           </div>
         )}
+
+        {/* Overlay legend */}
+        <div style={{ position:"absolute", top:8, right:12, zIndex:10, display:"flex", gap:"0.45rem", pointerEvents:"none" }}>
+          {overlays.has("ema9")  && <span style={{ fontSize:"0.63rem", color:C.ema9,  fontFamily:"var(--font-mono)" }}>EMA9</span>}
+          {overlays.has("ema21") && <span style={{ fontSize:"0.63rem", color:C.ema21, fontFamily:"var(--font-mono)" }}>EMA21</span>}
+          {overlays.has("ema50") && <span style={{ fontSize:"0.63rem", color:C.ema50, fontFamily:"var(--font-mono)" }}>EMA50</span>}
+          {overlays.has("bb")    && <span style={{ fontSize:"0.63rem", color:"#93C5FD",fontFamily:"var(--font-mono)" }}>BB20</span>}
+        </div>
+
+        {/* Stale-while-revalidate spinner */}
+        {loading && history.length > 0 && (
+          <div style={{ position:"absolute", top:8, right:"50%", transform:"translateX(50%)", zIndex:10, fontSize:"0.62rem", color:"#6B7280", background:"rgba(0,0,0,0.6)", borderRadius:12, padding:"0.15rem 0.5rem", backdropFilter:"blur(4px)" }}>
+            refreshing…
+          </div>
+        )}
+
+        <div ref={mainRef} style={{ flex:"1 1 auto", minHeight:0 }} />
+        <div style={{ height:1, background:"rgba(255,255,255,0.05)" }} />
+        <div style={{ display:"flex", alignItems:"center", padding:"0 0.875rem", height:20, background:"rgba(0,0,0,0.12)" }}>
+          <span style={{ fontSize:"0.6rem", color:"#4B5563", fontFamily:"var(--font-mono)", letterSpacing:"0.06em", textTransform:"uppercase" }}>
+            {subPanel} · {symbol || "—"}
+          </span>
+        </div>
+        <div ref={subRef} style={{ height:heights.sub, flexShrink:0 }} />
       </div>
     </div>
   );
-}
+});
 
-/* ─── Helpers ────────────────────────────────────────────────────────────── */
-
-function fmt(n: number) {
-  return "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtVol(n: number) {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
-  if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K";
-  return n.toString();
-}
-
-/* ─── Tiny inline SVG icons ─────────────────────────────────────────────── */
-
-function CandleIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden>
-      <rect x="1" y="3" width="3" height="8" rx="0.5" opacity="0.9" />
-      <line x1="2.5" y1="1" x2="2.5" y2="3" stroke="currentColor" strokeWidth="1" />
-      <line x1="2.5" y1="11" x2="2.5" y2="13" stroke="currentColor" strokeWidth="1" />
-      <rect x="5.5" y="5" width="3" height="5" rx="0.5" opacity="0.6" />
-      <line x1="7" y1="2" x2="7" y2="5" stroke="currentColor" strokeWidth="1" />
-      <line x1="7" y1="10" x2="7" y2="12" stroke="currentColor" strokeWidth="1" />
-      <rect x="10" y="4" width="3" height="6" rx="0.5" opacity="0.9" />
-      <line x1="11.5" y1="1.5" x2="11.5" y2="4" stroke="currentColor" strokeWidth="1" />
-      <line x1="11.5" y1="10" x2="11.5" y2="12.5" stroke="currentColor" strokeWidth="1" />
-    </svg>
-  );
-}
-
-function AreaIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path d="M1 11 L4 7 L7 9 L10 4 L13 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M1 11 L4 7 L7 9 L10 4 L13 6 L13 13 L1 13 Z" fill="currentColor" opacity="0.15" />
-    </svg>
-  );
-}
-
-export default memo(StockChart);
+export default StockChart;

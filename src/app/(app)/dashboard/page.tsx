@@ -1,318 +1,237 @@
 "use client";
-
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
-import {
-  Search, TrendingUp, TrendingDown, Minus,
-  AlertCircle, RefreshCw, Star,
-} from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
-import { useStock } from "@/hooks/useStock";
+import { TrendingUp, TrendingDown, Minus, AlertCircle, Star, Activity, X } from "lucide-react";
+import { useAuth }              from "@/context/AuthContext";
+import { useLiveMarket }        from "@/hooks/useLiveMarket";
+import { useMarketStore }       from "@/store/marketStore";
+import { useComputedAnalytics } from "@/hooks/useComputedAnalytics";
 import { addToWatchlist, isInWatchlist } from "@/lib/firestore/watchlist";
-import { toast } from "@/lib/toast";
-import SignalCard from "@/components/SignalCard";
-import NewsFeed from "@/components/NewsFeed";
-import StockStats from "@/components/StockStats";
-import ErrorBoundary from "@/components/ErrorBoundary";
-import type { StockQuote, OHLCVBar } from "@/types";
-import { workerApi } from "@/lib/workerApi";
-import styles from "./dashboard.module.css";
+import { toast }                from "@/lib/toast";
+import ErrorBoundary            from "@/components/ErrorBoundary";
+import ConsensusEngine          from "@/components/ConsensusEngine";
+import RiskEngine               from "@/components/RiskEngine";
+import EmotionEngine            from "@/components/EmotionEngine";
+import TradeSummary             from "@/components/TradeSummary";
+import { LiveStatsCell, MomentumCell, InstitutionalCell, SignalTimelineCell } from "@/components/BottomGrid";
+import styles                   from "./dashboard.module.css";
+import type { Timeframe }       from "@/lib/workerApi";
 
-// Lazy-load heavy chart — never SSR
-const StockChart = dynamic<{ data: OHLCVBar[]; symbol?: string; loading?: boolean; error?: string | null }>(
+const StockChart = dynamic<{ onTfChange?: (tf: Timeframe) => void }>(
   () => import("@/components/StockChart"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className={styles.chartSkeleton}>
-        <div className="skeleton" style={{ height: "100%" }} />
-      </div>
-    ),
-  }
+  { ssr: false, loading: () => <div className={styles.chartSkeleton} /> }
 );
 
-interface SearchResult {
-  symbol: string;
-  name: string;
-  exchangeShortName: string;
+const SUGGESTIONS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","WIPRO.NS","NIFTY","SENSEX"];
+
+function fmtNum(n: number) {
+  if (!n && n !== 0) return "—";
+  if (n >= 1e7) return `₹${(n / 1e7).toFixed(2)}Cr`;
+  if (n >= 1e5) return `₹${(n / 1e5).toFixed(2)}L`;
+  return `₹${n.toLocaleString("en-IN")}`;
 }
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const [inWL,         setInWL]         = useState(false);
+  const [wBusy,        setWBusy]        = useState(false);
 
-  // ─── Search state ─────────────────────────────────────────────────────────
-  const [query,       setQuery]       = useState("");
-  const [results,     setResults]     = useState<SearchResult[]>([]);
-  const [searching,   setSearching]   = useState(false);
-  const [showDropdown,setShowDropdown]= useState(false);
-  const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dropdownRef  = useRef<HTMLDivElement>(null);
+  const symbol      = useMarketStore(s => s.symbol);
+  const quote       = useMarketStore(s => s.quote);
+  const news        = useMarketStore(s => s.news);
+  const error       = useMarketStore(s => s.error);
+  const initialising = useMarketStore(s => s.initialising);
+  const setSymbol   = useMarketStore(s => s.setSymbol);
+  const setError    = useMarketStore(s => s.setError);
+  const reset       = useMarketStore(s => s.reset);
 
-  // ─── Watchlist state ──────────────────────────────────────────────────────
-  const [inWatchlist,    setInWatchlist]    = useState(false);
-  const [watchlistBusy,  setWatchlistBusy]  = useState(false);
+  const { handleTfChange, isLoading } = useLiveMarket(symbol);
+  const analytics = useComputedAnalytics();
+  const loading   = initialising || isLoading;
 
-  const { quote, history, signal, news, loading, error, fetchStock, clearError } = useStock();
+  const fetchStock = useCallback((sym: string) => {
+    if (!sym.trim()) return;
+    reset(); setSymbol(sym.trim().toUpperCase());
+  }, [reset, setSymbol]);
 
-  // ─── Debounced autocomplete search ───────────────────────────────────────
   useEffect(() => {
-    if (!query.trim() || query.length < 1) {
-      setTimeout(() => {
-        setResults([]);
-        setShowDropdown(false);
-      }, 0);
-      return;
-    }
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!user || !quote) { setInWL(false); return; }
+    isInWatchlist(user.uid, quote.symbol).then(setInWL).catch(() => {});
+  }, [user, quote?.symbol]);
 
-    debounceRef.current = setTimeout(async () => {
-      setSearching(true);
-      const res = await workerApi.search(query);
-      if (res.ok) setResults((res.data as SearchResult[]).slice(0, 8));
-      setSearching(false);
-      setShowDropdown(true);
-    }, 380);
-
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query]);
-
-  // ─── Close dropdown on outside click ─────────────────────────────────────
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  // ─── Check watchlist membership when quote changes ────────────────────────
-  useEffect(() => {
-    if (!user || !quote) {
-      setTimeout(() => setInWatchlist(false), 0);
-      return;
-    }
-    isInWatchlist(user.uid, quote.symbol)
-      .then(setInWatchlist)
-      .catch(() => {});
-  }, [user, quote]);
-
-  // ─── Handlers ─────────────────────────────────────────────────────────────
-  const handleSelect = useCallback((symbol: string) => {
-    setQuery(symbol);
-    setShowDropdown(false);
-    fetchStock(symbol);
-  }, [fetchStock]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (query.trim()) {
-      fetchStock(query.trim().toUpperCase());
-      setShowDropdown(false);
-    }
-  };
-
-  const handleWatchlist = async () => {
-    if (!user || !quote || watchlistBusy) return;
-    setWatchlistBusy(true);
+  const handleWL = async () => {
+    if (!user || !quote || wBusy) return;
+    setWBusy(true);
     try {
-      await addToWatchlist(user.uid, quote.symbol, quote.exchange);
-      setInWatchlist(true);
-      toast(`${quote.symbol} added to watchlist`, "success");
-    } catch {
-      toast("Failed to update watchlist", "error");
-    } finally {
-      setWatchlistBusy(false);
-    }
+      await addToWatchlist(user.uid, quote.symbol, (quote.exchange as import("@/types").Exchange) ?? "NSE");
+      setInWL(true); toast(`${quote.symbol} added to watchlist`, "success");
+    } catch { toast("Failed", "error"); }
+    finally { setWBusy(false); }
   };
 
-  // ─── Derived display values ───────────────────────────────────────────────
-  const priceChange = quote?.changePercent ?? 0;
-  const changeColor = priceChange > 0 ? "positive" : priceChange < 0 ? "negative" : "neutral";
-  const ChangeIcon  = priceChange > 0 ? TrendingUp : priceChange < 0 ? TrendingDown : Minus;
+  const pc = quote?.changePercent ?? 0;
+  const priceColor = pc > 0 ? "var(--green)" : pc < 0 ? "var(--red)" : "var(--text-secondary)";
+  const ChangeIcon = pc > 0 ? TrendingUp : pc < 0 ? TrendingDown : Minus;
+  const hasData = !!(quote || loading);
+
+  const conSig = analytics?.consensus?.signal;
+  const sigColor: Record<string,string> = { STRONG_BUY:"var(--green)", BUY:"#00C487", HOLD:"var(--amber)", SELL:"#FF6B35", STRONG_SELL:"var(--red)" };
 
   return (
-    <div className="container animate-fadeUp">
+    <div className={styles.workspace}>
 
-      {/* ─── Search ─────────────────────────────────────────────────────────── */}
-      <div className={styles.searchSection}>
-        <h1 className={styles.pageTitle}>Stock Analysis</h1>
-        <p className={styles.pageSubtitle}>
-          Search any NSE/BSE symbol for real-time signals
-        </p>
-
-        <div className={styles.searchWrapper} ref={dropdownRef}>
-          <form onSubmit={handleSubmit} className={styles.searchForm}>
-            <Search size={18} className={styles.searchIcon} />
-            <input
-              id="stock-search-input"
-              className={`input ${styles.searchInput}`}
-              type="text"
-              placeholder="Search symbol or company (e.g. RELIANCE, TCS)"
-              value={query}
-              onChange={(e) => setQuery(e.target.value.toUpperCase())}
-              autoComplete="off"
-              autoFocus
-            />
-            <button
-              id="stock-search-btn"
-              type="submit"
-              className={`btn btn-primary ${styles.searchBtn}`}
-              disabled={loading || !query.trim()}
-            >
-              {loading
-                ? <div className="spinner" style={{ width: 16, height: 16 }} />
-                : "Analyse"}
-            </button>
-          </form>
-
-          {/* Autocomplete dropdown */}
-          {showDropdown && results.length > 0 && (
-            <div className={styles.dropdown}>
-              {results.map((r) => (
-                <button
-                  key={r.symbol}
-                  className={styles.dropdownItem}
-                  onClick={() => handleSelect(r.symbol)}
-                >
-                  <span className={styles.dropSymbol}>{r.symbol}</span>
-                  <span className={styles.dropName}>{r.name}</span>
-                  <span className="badge badge-blue" style={{ fontSize: "0.7rem" }}>
-                    {r.exchangeShortName}
-                  </span>
-                </button>
-              ))}
-            </div>
+      {/* ── SYMBOL / SEARCH BAR ── */}
+      <div className={styles.symbolBar}>
+        <div style={{ flex: 1, display: "flex", gap: 5, alignItems: "center" }}>
+          {!symbol && (
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginRight: 8 }}>
+              Try:
+            </span>
           )}
+          {!symbol && SUGGESTIONS.slice(0,4).map(s => (
+            <button key={s} onClick={() => fetchStock(s)} style={{ fontSize:"0.63rem", fontFamily:"var(--font-mono)", fontWeight:600, padding:"3px 8px", border:"1px solid var(--border-subtle)", borderRadius:"var(--r-xs)", background:"var(--bg-panel)", cursor:"pointer", color:"var(--text-secondary)", transition:"all 0.12s" }}
+              onMouseEnter={e => { e.currentTarget.style.color="var(--blue)"; e.currentTarget.style.borderColor="rgba(77,159,255,0.35)"; }}
+              onMouseLeave={e => { e.currentTarget.style.color="var(--text-secondary)"; e.currentTarget.style.borderColor="var(--border-subtle)"; }}
+            >{s}</button>
+          ))}
+        </div>
 
-          {/* Searching indicator */}
-          {searching && (
-            <div className={styles.dropdown} style={{ padding: "0.875rem 1rem" }}>
-              <div className="spinner" style={{ width: 16, height: 16 }} />
-            </div>
+        <div className={styles.barRight}>
+          {conSig && (
+            <span className={styles.signalBadge} style={{ color: sigColor[conSig] ?? "var(--text-muted)", borderColor: `${sigColor[conSig] ?? "#666"}40`, background: `${sigColor[conSig] ?? "#666"}10` }}>
+              {analytics!.consensus!.label.toUpperCase()}
+            </span>
           )}
+          <span style={{ fontSize:"0.6rem", fontWeight:700, letterSpacing:"0.1em", color: loading ? "var(--amber)" : symbol ? "var(--green)" : "var(--text-muted)", display:"flex", alignItems:"center", gap:4 }}>
+            <div className="live-dot" style={{ width:5, height:5, background: loading ? "var(--amber)" : "var(--green)" }} />
+            {loading ? "LOADING" : symbol ? "LIVE" : "READY"}
+          </span>
         </div>
       </div>
 
-      {/* ─── Error banner ────────────────────────────────────────────────────── */}
       {error && (
-        <div className={styles.errorBanner}>
-          <AlertCircle size={18} />
-          <span>{error}</span>
-          <button onClick={clearError} className="btn btn-ghost btn-sm btn-icon">
-            <RefreshCw size={14} />
-          </button>
+        <div className={styles.errorBar}>
+          <AlertCircle size={12} />
+          <span style={{ flex:1 }}>{error}</span>
+          <button onClick={() => setError(null)} style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-muted)", display:"flex" }}><X size={12} /></button>
         </div>
       )}
 
-      {/* ─── Empty / welcome state ───────────────────────────────────────────── */}
-      {!loading && !quote && !error && (
-        <div className={styles.emptyState}>
-          <div className={styles.emptyIcon}>
-            <TrendingUp size={40} />
+      {/* ── WELCOME ── */}
+      {!hasData && !error && (
+        <div className={styles.welcome}>
+          <div className={styles.welcomeGlow}><Activity size={30} color="var(--green)" /></div>
+          <div style={{ textAlign:"center" }}>
+            <h2 style={{ fontSize:"1.4rem", fontWeight:800, letterSpacing:"-0.025em", marginBottom:8 }}>Trading Intelligence Terminal</h2>
+            <p style={{ color:"var(--text-muted)", fontSize:"0.82rem", maxWidth:460, lineHeight:1.65 }}>
+              Load any NSE/BSE symbol to activate the full intelligence suite — live OHLCV analysis, consensus engine, risk scanner, momentum detector, and institutional flow tracker.
+            </p>
           </div>
-          <h2>Search a Stock to Begin</h2>
-          <p>
-            Enter any NSE or BSE symbol above to see real-time price,
-            technical indicators, AI-generated signals, and news sentiment.
-          </p>
-          <div className={styles.suggestions}>
-            {["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "WIPRO.NS"].map((s) => (
-              <button
-                key={s}
-                className="btn btn-secondary btn-sm"
-                onClick={() => handleSelect(s)}
-              >
-                {s}
-              </button>
-            ))}
+          <div className={styles.chips}>
+            {SUGGESTIONS.map(s => <button key={s} className={styles.chip} onClick={() => fetchStock(s)}>{s}</button>)}
           </div>
         </div>
       )}
 
-      {/* ─── Results ─────────────────────────────────────────────────────────── */}
-      {quote && (
-        <>
-          {/* Quote header */}
-          <div className={styles.quoteHeader}>
-            <div>
-              <div className={styles.symbolRow}>
-                <h2 className={styles.symbol}>{quote.symbol}</h2>
-                <span className="badge badge-blue">{quote.exchange}</span>
-                {/* Watchlist star */}
-                {user && (
-                  <button
-                    id="watchlist-star-btn"
-                    className={`btn btn-ghost btn-sm btn-icon ${styles.starBtn}`}
-                    onClick={handleWatchlist}
-                    disabled={watchlistBusy || inWatchlist}
-                    title={inWatchlist ? "Already in watchlist" : "Add to watchlist"}
-                    aria-label="Add to watchlist"
-                  >
-                    <Star
-                      size={18}
-                      fill={inWatchlist ? "var(--accent-amber)" : "none"}
-                      color={inWatchlist ? "var(--accent-amber)" : "var(--text-muted)"}
-                    />
-                  </button>
-                )}
+      {/* ── MAIN TERMINAL ── */}
+      {hasData && (
+        <div className={styles.terminal}>
+
+          {/* LEFT — chart column */}
+          <div className={styles.chartCol}>
+
+            {/* Quote bar */}
+            {quote && (
+              <div className={styles.quoteBar}>
+                <div className={styles.qbLeft}>
+                  <span className={styles.qbSym}>{quote.symbol}</span>
+                  <span className={styles.qbName}>{quote.name}</span>
+                </div>
+                <span className={styles.qbPrice} style={{ color:priceColor }}>
+                  ₹{quote.price.toLocaleString("en-IN",{ minimumFractionDigits:2 })}
+                </span>
+                <span className={styles.qbChange} style={{ color:priceColor }}>
+                  <ChangeIcon size={12} />
+                  {quote.change >= 0 ? "+" : ""}{quote.change.toFixed(2)} ({pc >= 0 ? "+" : ""}{pc.toFixed(2)}%)
+                </span>
+                <div className={styles.qbStats}>
+                  {[
+                    { l:"OPEN",    v:`₹${quote.open?.toFixed(2)??"—"}` },
+                    { l:"HIGH",    v:`₹${quote.high?.toFixed(2)??"—"}`, c:"var(--green)" },
+                    { l:"LOW",     v:`₹${quote.low?.toFixed(2)??"—"}`,  c:"var(--red)" },
+                    { l:"VOL",     v:fmtNum(quote.volume) },
+                    { l:"MKT CAP", v:fmtNum(quote.marketCap) },
+                    { l:"P/E",     v:quote.pe ? quote.pe.toFixed(1) : "—" },
+                  ].map(s => (
+                    <div key={s.l} className={styles.qbStat}>
+                      <span className={styles.qbStatL}>{s.l}</span>
+                      <span className={styles.qbStatV} style={s.c ? { color:s.c } : {}}>{s.v}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className={styles.qbActions}>
+                  {user && (
+                    <button onClick={handleWL} disabled={wBusy || inWL} style={{ background:"none", border:"none", cursor:"pointer", display:"flex", padding:4, color: inWL ? "var(--amber)" : "var(--text-muted)", transition:"color 0.15s" }}
+                      onMouseEnter={e => { if (!inWL) e.currentTarget.style.color="var(--amber)"; }}
+                      onMouseLeave={e => { if (!inWL) e.currentTarget.style.color="var(--text-muted)"; }}
+                    >
+                      <Star size={14} fill={inWL ? "var(--amber)" : "none"} />
+                    </button>
+                  )}
+                </div>
               </div>
-              <p className={styles.companyName}>{quote.name}</p>
+            )}
+
+            {/* Chart */}
+            <div className={styles.chartRegion}>
+              <div className={styles.chartWrap}>
+                <ErrorBoundary><StockChart onTfChange={handleTfChange} /></ErrorBoundary>
+              </div>
             </div>
-            <div className={styles.priceBlock}>
-              <div className={styles.price}>
-                ₹{quote.price.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-              </div>
-              <div className={`${styles.change} ${changeColor}`}>
-                <ChangeIcon size={16} />
-                {quote.change >= 0 ? "+" : ""}
-                {quote.change.toFixed(2)}&nbsp;
-                ({priceChange >= 0 ? "+" : ""}{priceChange.toFixed(2)}%)
-              </div>
+
+            {/* Bottom analytics strip */}
+            <div className={styles.analyticsStrip}>
+              <ErrorBoundary><LiveStatsCell /></ErrorBoundary>
+              <ErrorBoundary><MomentumCell /></ErrorBoundary>
+              <ErrorBoundary><InstitutionalCell /></ErrorBoundary>
+              <ErrorBoundary><SignalTimelineCell /></ErrorBoundary>
             </div>
           </div>
 
-          {/* Stats row */}
-          <ErrorBoundary>
-            <StockStats quote={quote} />
-          </ErrorBoundary>
+          {/* RIGHT — sidebar */}
+          <div className={styles.sidebar}>
+            <div className={styles.sideSection}><ErrorBoundary><ConsensusEngine /></ErrorBoundary></div>
+            <div className={styles.sideSection}><ErrorBoundary><RiskEngine currentPrice={quote?.price} /></ErrorBoundary></div>
+            <div className={styles.sideSection}><ErrorBoundary><EmotionEngine /></ErrorBoundary></div>
+            <div className={styles.sideSection}><ErrorBoundary><TradeSummary /></ErrorBoundary></div>
 
-          {/* Main grid */}
-          <div className="dashboard-grid" style={{ marginTop: "1.5rem" }}>
-
-            {/* Left column — chart + news */}
-            <div className="flex flex-col gap-4">
-              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                <div className={styles.chartHeader}>
-                  <span className={styles.chartTitle}>Price Chart (180d)</span>
-                  <span className={styles.chartPeriod}>{quote.symbol}</span>
+            {/* Compact news feed */}
+            {news.length > 0 && (
+              <div className={styles.sideSection}>
+                <div style={{ fontSize:"0.57rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", color:"var(--text-muted)", marginBottom:8 }}>
+                  📰 News Sentiment
                 </div>
-                <div className={styles.chartContainer}>
-                  <ErrorBoundary>
-                    <StockChart
-                      data={history}
-                      symbol={quote.symbol}
-                      loading={loading}
-                      error={error ?? null}
-                    />
-                  </ErrorBoundary>
+                <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                  {news.slice(0, 5).map(n => {
+                    const col = n.sentiment === "Positive" ? "var(--green)" : n.sentiment === "Negative" ? "var(--red)" : "var(--amber)";
+                    return (
+                      <a key={n.id} href={n.url} target="_blank" rel="noopener noreferrer" style={{ display:"block", padding:"6px 8px", borderRadius:"var(--r-sm)", background:"var(--bg-panel)", border:`1px solid var(--border-dim)`, textDecoration:"none", transition:"border-color 0.15s" }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--border-subtle)")}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border-dim)")}
+                      >
+                        <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:3 }}>
+                          <span style={{ fontSize:"0.55rem", fontWeight:800, color:col, letterSpacing:"0.06em" }}>{n.sentiment.toUpperCase()}</span>
+                          <span style={{ fontSize:"0.55rem", color:"var(--text-muted)" }}>· {n.source}</span>
+                        </div>
+                        <p style={{ fontSize:"0.65rem", color:"var(--text-secondary)", lineHeight:1.4, margin:0 }}>{n.title}</p>
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
-
-              <ErrorBoundary>
-                <NewsFeed news={news} />
-              </ErrorBoundary>
-            </div>
-
-            {/* Right column — signal panel */}
-            <div>
-              <ErrorBoundary>
-                <SignalCard signal={signal} loading={loading} />
-              </ErrorBoundary>
-            </div>
+            )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

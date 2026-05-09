@@ -1,46 +1,51 @@
 "use client";
-
 import type { StockQuote } from "@/types";
-import styles from "./StockStats.module.css";
 
-interface Props { quote: StockQuote; }
+interface Props { quote: StockQuote }
 
-export default function StockStats({ quote }: Props) {
-  const stats = [
-    { label: "Open",       value: `₹${fmt(quote.open)}` },
-    { label: "High",       value: `₹${fmt(quote.high)}` },
-    { label: "Low",        value: `₹${fmt(quote.low)}` },
-    { label: "Volume",     value: formatVolume(quote.volume) },
-    { label: "Market Cap", value: formatMarketCap(quote.marketCap) },
-    { label: "P/E Ratio",  value: quote.pe > 0 ? quote.pe.toFixed(2) : "N/A" },
-  ];
-
+function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div className={`stat-grid ${styles.grid}`}>
-      {stats.map(({ label, value }) => (
-        <div key={label} className={`card ${styles.stat}`}>
-          <span className={styles.label}>{label}</span>
-          <span className={`${styles.value} mono`}>{value}</span>
-        </div>
-      ))}
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+      <span style={{ fontSize: "0.62rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</span>
+      <span style={{ fontSize: "0.82rem", fontFamily: "var(--font-mono)", fontWeight: 600, color: color ?? "var(--text-primary)" }}>{value}</span>
     </div>
   );
 }
 
 function fmt(n: number) {
-  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!n && n !== 0) return "—";
+  if (n >= 1e12) return `₹${(n / 1e12).toFixed(2)}T`;
+  if (n >= 1e9)  return `₹${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e7)  return `₹${(n / 1e7).toFixed(2)}Cr`;
+  return `₹${n.toLocaleString("en-IN")}`;
 }
 
-function formatVolume(v: number): string {
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
-  if (v >= 1_000)     return `${(v / 1_000).toFixed(1)}K`;
-  return v.toString();
+function fmtVol(n: number) {
+  if (!n) return "—";
+  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
+  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
+  return n.toLocaleString("en-IN");
 }
 
-function formatMarketCap(mc: number): string {
-  if (!mc) return "N/A";
-  if (mc >= 1e12) return `₹${(mc / 1e12).toFixed(2)}T`;
-  if (mc >= 1e9)  return `₹${(mc / 1e9).toFixed(2)}B`;
-  if (mc >= 1e6)  return `₹${(mc / 1e6).toFixed(2)}M`;
-  return `₹${mc.toLocaleString("en-IN")}`;
+export default function StockStats({ quote }: Props) {
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+      gap: "0.5rem",
+      padding: "0.875rem 1.25rem",
+      background: "var(--bg-card)",
+      borderRadius: 12,
+      border: "1px solid var(--border-subtle)",
+    }}>
+      <Stat label="Open"       value={quote.open ? `₹${quote.open.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"} />
+      <Stat label="High"       value={quote.high ? `₹${quote.high.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"} color="#00FFA3" />
+      <Stat label="Low"        value={quote.low  ? `₹${quote.low.toLocaleString("en-IN",  { minimumFractionDigits: 2 })}` : "—"} color="#EF4444" />
+      <Stat label="Volume"     value={fmtVol(quote.volume)} />
+      <Stat label="Mkt Cap"    value={fmt(quote.marketCap)} />
+      <Stat label="P/E Ratio"  value={quote.pe ? quote.pe.toFixed(1) : "—"} />
+      <Stat label="Currency"   value={quote.currency || "INR"} />
+      <Stat label="Exchange"   value={quote.exchange} />
+    </div>
+  );
 }

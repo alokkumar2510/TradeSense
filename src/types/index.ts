@@ -12,7 +12,7 @@ export interface StockQuote {
   volume: number;
   marketCap: number;
   pe: number;
-  exchange: "NSE" | "BSE";
+  exchange: string;  // "NSE" | "BSE" | any FMP exchange string
   currency: string;
   timestamp: number;
 }
@@ -44,6 +44,66 @@ export interface IndicatorPayload {
   rsi: RSIData | null;
   macd: MACDData | null;
   staleness?: "fresh" | "stale"; // stale = served from cache fallback
+}
+
+// ─── Analytics Engine ────────────────────────────────────────────────────────
+
+export interface ConsensusResult {
+  signal: "STRONG_BUY" | "BUY" | "HOLD" | "SELL" | "STRONG_SELL";
+  label: string;
+  score: number;
+  buyProb: number;
+  sellProb: number;
+  confidence: number;
+  factors: { name: string; value: string; bias: "bull" | "bear" | "neutral" }[];
+}
+
+export interface MomentumResult {
+  phase: string;
+  strength: number;
+  acceleration: number;
+  exhaustion: boolean;
+  description: string;
+}
+
+export interface InstitutionalResult {
+  detected: boolean;
+  type: string;
+  confidence: number;
+  description: string;
+  volumeRatio: number;
+}
+
+export interface RiskResult {
+  level: "Safe" | "Moderate" | "Aggressive" | "Extreme";
+  score: number;
+  volatilityPct: number;
+  drawdownRisk: number;
+  stopLoss: number;
+  targetPrice: number;
+  riskReward: number;
+}
+
+export interface EmotionResult {
+  state: string;
+  fearScore: number;
+  greedScore: number;
+  description: string;
+}
+
+export interface AnalysisResult {
+  consensus: ConsensusResult;
+  momentum: MomentumResult;
+  institutional: InstitutionalResult;
+  risk: RiskResult;
+  emotion: EmotionResult;
+  tradeSummary: string;
+  rsi: number;
+  macd: { macd: number; signal: number; histogram: number };
+  ema9: number;
+  ema21: number;
+  ema50: number;
+  computedAt: string;
 }
 
 // ─── Signal Engine ───────────────────────────────────────────────────────────
