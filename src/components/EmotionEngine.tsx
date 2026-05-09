@@ -1,6 +1,6 @@
 "use client";
 import { useComputedAnalytics } from "@/hooks/useComputedAnalytics";
-import { Panel, PanelHdr, SkeletonPanel, EmptyPanel } from "./ConsensusEngine";
+import { Panel, PanelHdr, SkeletonPanel, EmptyPanel } from "./PanelPrimitives";
 
 const STATE_META: Record<string, { emoji:string; color:string; bg:string; barColor:string }> = {
   "Panic — Market Stress":     { emoji:"😱", color:"#EF4444", bg:"rgba(239,68,68,0.10)",  barColor:"#EF4444"  },

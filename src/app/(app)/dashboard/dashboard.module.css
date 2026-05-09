@@ -112,7 +112,7 @@
 .terminal {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 296px;
+  grid-template-columns: 1fr var(--right-rail-w);
   min-height: 0;
   overflow: hidden;
 }
@@ -202,11 +202,15 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0 12px;
+  padding: 0 10px;
   border-right: 1px solid var(--border-dim);
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  transition: background 0.12s;
+}
+.qbStat:hover {
+  background: rgba(255,255,255,0.015);
 }
 
 .qbStatL {
@@ -257,7 +261,7 @@
   grid-template-columns: repeat(4, 1fr);
   border-top: 1px solid var(--border-dim);
   flex-shrink: 0;
-  height: 170px;
+  height: var(--bottom-grid-h);
   overflow: hidden;
 }
 
@@ -300,6 +304,10 @@
   border-bottom: 1px solid var(--border-dim);
   flex-shrink: 0;
   animation: slideInRight 0.2s ease both;
+  transition: background 0.12s;
+}
+.sideSection:hover {
+  background: rgba(255,255,255,0.012);
 }
 
 /* ─── Compact data row ──────────────────────────────────────────── */

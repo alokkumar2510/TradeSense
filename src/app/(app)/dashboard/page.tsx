@@ -14,6 +14,7 @@ import RiskEngine               from "@/components/RiskEngine";
 import EmotionEngine            from "@/components/EmotionEngine";
 import TradeSummary             from "@/components/TradeSummary";
 import { LiveStatsCell, MomentumCell, InstitutionalCell, SignalTimelineCell } from "@/components/BottomGrid";
+import MarketNarrator from "@/components/MarketNarrator";
 import styles                   from "./dashboard.module.css";
 import type { Timeframe }       from "@/lib/workerApi";
 
@@ -204,6 +205,7 @@ export default function DashboardPage() {
             <div className={styles.sideSection}><ErrorBoundary><RiskEngine currentPrice={quote?.price} /></ErrorBoundary></div>
             <div className={styles.sideSection}><ErrorBoundary><EmotionEngine /></ErrorBoundary></div>
             <div className={styles.sideSection}><ErrorBoundary><TradeSummary /></ErrorBoundary></div>
+            <div className={styles.sideSection} style={{ minHeight: 320 }}><ErrorBoundary><MarketNarrator /></ErrorBoundary></div>
 
             {/* Compact news feed */}
             {news.length > 0 && (

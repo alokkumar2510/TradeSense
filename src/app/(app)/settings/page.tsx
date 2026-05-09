@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { Settings, User, Bell, Shield, Palette, Info, LogOut } from "lucide-react";
+import { type LucideIcon, Settings, User, Bell, Shield, Palette, Info, LogOut } from "lucide-react";
 
-function Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
+function Section({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: React.ReactNode }) {
   return (
     <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-dim)", borderRadius: "var(--r-md)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderBottom: "1px solid var(--border-dim)" }}>

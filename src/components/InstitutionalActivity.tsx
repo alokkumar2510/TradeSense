@@ -1,6 +1,6 @@
 "use client";
 import { useComputedAnalytics } from "@/hooks/useComputedAnalytics";
-import { Panel, PanelHdr, SkeletonPanel, EmptyPanel } from "./ConsensusEngine";
+import { Panel, PanelHdr, SkeletonPanel, EmptyPanel } from "./PanelPrimitives";
 
 const TYPE_META: Record<string, { icon:string; color:string; bg:string }> = {
   "Smart Money Entry":           { icon:"🐋", color:"#00FFA3", bg:"rgba(0,255,163,0.08)"  },

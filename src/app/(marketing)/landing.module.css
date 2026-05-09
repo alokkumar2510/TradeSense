@@ -1,0 +1,172 @@
+/* src/app/(marketing)/landing.module.css */
+
+:root {
+  --bg-base: #02050C;
+  --bg-elev-1: #060B17;
+  --bg-elev-2: #0A1122;
+  --line: rgba(255, 255, 255, 0.06);
+  --line-strong: rgba(255, 255, 255, 0.12);
+  --text-hi: #EAF2FF;
+  --text-mid: #9BAACB;
+  --text-low: #5A6B8C;
+  --neon: #00FFB2;
+  --neon-dim: rgba(0, 255, 178, 0.18);
+  --blue: #3D8EFF;
+  --blue-dim: rgba(61, 142, 255, 0.18);
+  --red: #FF5470;
+  --amber: #FFB547;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+}
+
+
+.marketingRoot {
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(1200px 800px at 80% -10%, rgba(61, 142, 255, 0.10), transparent 60%),
+    radial-gradient(900px 700px at 10% 30%, rgba(0, 255, 178, 0.06), transparent 60%),
+    var(--bg-base);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.landing {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Ambient layers */
+.ambientGrid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 75%);
+}
+
+.ambientGlow {
+  position: fixed;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(80px);
+  opacity: 0.55;
+}
+
+.ambientGlowTop {
+  top: -20%;
+  right: -10%;
+  width: 60vw;
+  height: 60vw;
+  background: radial-gradient(circle, var(--blue-dim), transparent 60%);
+}
+
+.ambientGlowMid {
+  top: 50%;
+  left: -15%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, var(--neon-dim), transparent 60%);
+}
+
+/* Reusable utilities */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--neon);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eyebrow::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--neon);
+  box-shadow: 0 0 12px var(--neon);
+}
+
+.section {
+  position: relative;
+  z-index: 1;
+  padding: 160px 6vw;
+}
+
+.sectionTitle {
+  font-size: clamp(36px, 5vw, 72px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  margin: 24px 0 20px;
+}
+
+.sectionSub {
+  font-size: 18px;
+  color: var(--text-mid);
+  max-width: 620px;
+  line-height: 1.6;
+}
+
+/* Nav links responsive */
+@media (max-width: 768px) {
+  .navLinks {
+    display: none !important;
+  }
+}
+
+/* Intelligence section */
+@media (max-width: 980px) {
+  .intelCopy,
+  .intelGrid {
+    grid-column: span 12 !important;
+  }
+
+  .intelGrid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Strategy lab */
+@media (max-width: 880px) {
+  .labGrid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Institutional flow */
+@media (max-width: 900px) {
+  .flowGrid {
+    grid-template-columns: 1fr !important;
+    gap: 40px !important;
+  }
+}
+
+/* Replay / Paper trade */
+@media (max-width: 880px) {
+  .rpGrid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Founder */
+@media (max-width: 900px) {
+  .founderGrid {
+    grid-template-columns: 1fr !important;
+    gap: 48px !important;
+  }
+}
+
+/* Sections responsive padding */
+@media (max-width: 640px) {
+  .section {
+    padding: 80px 5vw;
+  }
+}

@@ -1,6 +1,6 @@
 "use client";
 import { useComputedAnalytics } from "@/hooks/useComputedAnalytics";
-import { Panel, PanelHdr, SkeletonPanel, EmptyPanel } from "./ConsensusEngine";
+import { Panel, PanelHdr, SkeletonPanel, EmptyPanel } from "./PanelPrimitives";
 
 const LEVEL_META = {
   Safe:       { color:"#00FFA3", bg:"rgba(0,255,163,0.08)",   icon:"🟢", desc:"Low risk — well-defined structure" },

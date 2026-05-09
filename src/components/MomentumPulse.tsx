@@ -1,6 +1,6 @@
 "use client";
 import { useComputedAnalytics } from "@/hooks/useComputedAnalytics";
-import { Panel, PanelHdr, SkeletonPanel, EmptyPanel } from "./ConsensusEngine";
+import { Panel, PanelHdr, SkeletonPanel, EmptyPanel } from "./PanelPrimitives";
 
 const PHASE_COLORS: Record<string, string> = {
   "Expansion":   "#00FFA3",
