@@ -29,10 +29,11 @@ export async function getOrFetch<T>(
 
 /** TTL constants (seconds) */
 export const TTL = {
-  QUOTE:      60,   // 1 minute
-  HISTORY:    300,  // 5 minutes
-  INDICATORS: 300,  // 5 minutes
-  SIGNAL:     300,  // 5 minutes
-  NEWS:       600,  // 10 minutes
-  SEARCH:     120,  // 2 minutes
+  QUOTE:           60,   // 1 minute
+  HISTORY:         300,  // 5 minutes
+  INDICATORS:      300,  // 5 minutes
+  DAILY_INDICATOR: 86400,// 24 hours (for strict AV rate limits)
+  SIGNAL:          300,  // 5 minutes
+  NEWS:            600,  // 10 minutes
+  SEARCH:          120,  // 2 minutes
 } as const;
